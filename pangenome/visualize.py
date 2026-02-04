@@ -43,13 +43,25 @@ def graph2png(graph: Graph, name: str, view: bool = False):
   dot = create_graph(graph, name)
   dot.render(cleanup=True, view=view)
 
-def draw_seeds(dot, graph, query, seeds, k, draw_links):
-  colors = _palette(min(8, len(seeds)))
+def draw_seeds(dot, graph, query, seeds, k):
+  # unique k-mers
+  unique_kmers = []
+  for s in seeds:
+    kmer = query[s.qpos : s.qpos + k]
+    if kmer not in unique_kmers:
+      unique_kmers.append(kmer)
+  
+  # limit to 8
+  palette = _palette(min(8, len(unique_kmers)))
+  color_map = {kmer: palette[i] for i, kmer in enumerate(unique_kmers[:8])}
 
-  # highlight seeds inside node labels
+  # group highlighting
   node_spans = {}
-  for color, seed in zip(colors, seeds[:8]):
-    node_spans.setdefault(seed.node, []).append((seed.npos, seed.npos + k, color))
+  for seed in seeds:
+    kmer = query[seed.qpos : seed.qpos + k]
+    if kmer in color_map:
+      color = color_map[kmer]
+      node_spans.setdefault(seed.node, []).append((seed.npos, seed.npos + k, color))
 
   for node, spans in node_spans.items():
     seq = graph.nodes[node]
@@ -59,13 +71,16 @@ def draw_seeds(dot, graph, query, seeds, k, draw_links):
         chars[i] = f'<U><FONT COLOR="{color}">{chars[i]}</FONT></U>'
     dot.node(node, label=f'<<FONT FACE="Helvetica">{"".join(chars)}</FONT>>')
 
-  # underline query kmers
+  # underline
   q = list(query)
-  for color, seed in zip(colors, seeds[:8]):
-    for i in range(seed.qpos, seed.qpos + k):
-      q[i] = f'<U><FONT COLOR="{color}">{q[i]}</FONT></U>'
+  for seed in seeds:
+    kmer = query[seed.qpos : seed.qpos + k]
+    if kmer in color_map:
+      color = color_map[kmer]
+      for i in range(seed.qpos, seed.qpos + k):
+        q[i] = f'<U><FONT COLOR="{color}">{q[i]}</FONT></U>'
 
-  # query node (bigger font, centered table)
+  # query node
   dot.node(
     "query",
     label=(
@@ -76,15 +91,14 @@ def draw_seeds(dot, graph, query, seeds, k, draw_links):
     shape="plaintext"
   )
 
-  # force query below graph
   with dot.subgraph() as s:
     s.attr(rank="sink")
     s.node("query")
-
+    
 def seeds2png(graph: Graph, query: str, seeds: list[Seed],
               k: int, name: str, view=False):
   dot = create_graph(graph, name)
-  draw_seeds(dot, graph, query, seeds, k, draw_links=False)
+  draw_seeds(dot, graph, query, seeds, k)
   dot.render(cleanup=True, view=view)
 
 def align2png(graph: Graph, query: str, edits: list[Edit],
